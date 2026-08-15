@@ -1,4 +1,5 @@
 import db from '$lib/server/db';
+import { getLastSync } from '$lib/server/sync';
 import type { Game, PlatformInfo } from '$lib/types';
 import type { PageServerLoad } from './$types';
 
@@ -9,7 +10,7 @@ export const load: PageServerLoad = () => {
 	const gameRows = db.prepare('SELECT id, title, thumbnail_url, rank FROM games').all() as GameRow[];
 	const platformRows = db
 		.prepare(
-			'SELECT game_id, platform, release_date, score, store_url FROM game_platforms ORDER BY platform'
+			'SELECT game_id, platform, source, release_date, score, store_url FROM game_platforms ORDER BY platform'
 		)
 		.all() as PlatformRow[];
 
@@ -21,6 +22,7 @@ export const load: PageServerLoad = () => {
 
 	return {
 		ranked: games.filter((g) => g.rank !== null).sort((a, b) => a.rank! - b.rank!),
-		unranked: games.filter((g) => g.rank === null).sort((a, b) => a.title.localeCompare(b.title))
+		unranked: games.filter((g) => g.rank === null).sort((a, b) => a.title.localeCompare(b.title)),
+		lastSync: getLastSync()
 	};
 };

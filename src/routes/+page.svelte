@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { flip } from 'svelte/animate';
 	import { dndzone, type DndEvent } from 'svelte-dnd-action';
-	import type { Game } from '$lib/types';
+	import type { Game, SourceId } from '$lib/types';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -53,6 +53,39 @@
 			saveState = 'error';
 		}
 	}
+
+	let syncing = $state(false);
+	let syncError = $state<string | null>(null);
+
+	async function sync() {
+		syncing = true;
+		syncError = null;
+		try {
+			const res = await fetch('/api/sync', { method: 'POST' });
+			if (!res.ok) {
+				const body = await res.json().catch(() => null);
+				throw new Error(body?.message ?? `HTTP ${res.status}`);
+			}
+			location.reload();
+		} catch (e) {
+			syncError = e instanceof Error ? e.message : 'Sync failed';
+			syncing = false;
+		}
+	}
+
+	const sourceLabels: Record<SourceId, string> = {
+		steam: 'Steam',
+		psn: 'PS Store',
+		manual: 'Manual'
+	};
+
+	function sourcesOf(game: Game): SourceId[] {
+		return [...new Set(game.platforms.map((p) => p.source))];
+	}
+
+	function formatSyncTime(iso: string): string {
+		return iso.slice(0, 16).replace('T', ' ') + ' UTC';
+	}
 </script>
 
 {#snippet cardBody(game: Game)}
@@ -62,7 +95,12 @@
 		<div class="thumb placeholder">🕹️</div>
 	{/if}
 	<div class="info">
-		<h2>{game.title}</h2>
+		<div class="title-row">
+			<h2>{game.title}</h2>
+			{#each sourcesOf(game) as source (source)}
+				<span class="source {source}">{sourceLabels[source]}</span>
+			{/each}
+		</div>
 		<div class="platforms">
 			{#each game.platforms as p (p.platform)}
 				<div class="platform">
@@ -91,11 +129,31 @@
 			{:else if saveState === 'error'}
 				<span class="save-status error">Save failed — reorder again to retry</span>
 			{/if}
-			<button class="sync" disabled title="Wishlist sync comes in the next iteration">
-				⟳ Sync
+			<button class="sync" onclick={sync} disabled={syncing}>
+				{syncing ? '⟳ Syncing…' : '⟳ Sync'}
 			</button>
 		</div>
 	</header>
+
+	{#if syncError}
+		<p class="sync-info error">Sync failed: {syncError}</p>
+	{:else if data.lastSync}
+		<p class="sync-info">
+			Last sync {formatSyncTime(data.lastSync.at)} —
+			{#if data.lastSync.error}
+				failed: {data.lastSync.error}
+			{:else}
+				{data.lastSync.added} added, {data.lastSync.updated} updated, {data.lastSync.removed} removed{data
+					.lastSync.failed
+					? `, ${data.lastSync.failed} unavailable`
+					: ''}
+			{/if}
+		</p>
+	{/if}
+
+	{#if ranked.length === 0 && unranked.length === 0}
+		<p class="empty">No games yet — hit ⟳ Sync to pull your Steam wishlist.</p>
+	{/if}
 
 	{#if unranked.length > 0 || trayOpen}
 		<section class="tray">
@@ -201,9 +259,34 @@
 		font-size: 0.9rem;
 	}
 
+	.sync:not(:disabled) {
+		cursor: pointer;
+		color: #e6e9ef;
+	}
+
+	.sync:not(:disabled):hover {
+		border-color: #4a5878;
+	}
+
 	.sync:disabled {
-		cursor: not-allowed;
+		cursor: wait;
 		opacity: 0.6;
+	}
+
+	.sync-info {
+		font-size: 0.8rem;
+		color: #8b93a3;
+		margin: -0.5rem 0 1rem;
+	}
+
+	.sync-info.error {
+		color: #ff7b72;
+	}
+
+	.empty {
+		text-align: center;
+		color: #8b93a3;
+		padding: 3rem 0;
 	}
 
 	.tray {
@@ -300,9 +383,41 @@
 		min-width: 0;
 	}
 
+	.title-row {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+		margin-bottom: 0.45rem;
+	}
+
 	h2 {
 		font-size: 1.05rem;
-		margin: 0 0 0.45rem;
+		margin: 0;
+	}
+
+	.source {
+		font-size: 0.65rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		border-radius: 4px;
+		padding: 0.12rem 0.4rem;
+	}
+
+	.source.steam {
+		background: #1b2838;
+		color: #66c0f4;
+	}
+
+	.source.psn {
+		background: #0f2f6b;
+		color: #9bb7ff;
+	}
+
+	.source.manual {
+		background: #2c3446;
+		color: #aeb6c4;
 	}
 
 	.platforms {
