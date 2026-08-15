@@ -1,7 +1,11 @@
 import { env } from '$env/dynamic/private';
 import type { SyncSummary } from '$lib/types';
 import db from './db';
+import { lookupSteamApps } from './igdb';
+import { conceptUrl, fetchConceptRating } from './psstore';
 import { fetchAppDetails, fetchWishlistAppids, type SteamApp } from './steam';
+
+const RATING_CONCURRENCY = 4;
 
 const stmts = {
 	saveLastSync: db.prepare(
@@ -19,7 +23,17 @@ const stmts = {
 			release_date = excluded.release_date,
 			score = excluded.score,
 			store_url = excluded.store_url
-	`)
+	`),
+	setIgdbData: db.prepare('UPDATE games SET igdb_id = ?, psn_concept_id = ? WHERE id = ?'),
+	upsertPs5Row: db.prepare(`
+		INSERT INTO game_platforms (game_id, platform, release_date, score, store_url)
+		VALUES (?, 'ps5', ?, ?, ?)
+		ON CONFLICT (game_id, platform) DO UPDATE SET
+			release_date = excluded.release_date,
+			score = excluded.score,
+			store_url = excluded.store_url
+	`),
+	deletePs5Row: db.prepare("DELETE FROM game_platforms WHERE game_id = ? AND platform = 'ps5'")
 };
 
 let running: Promise<SyncSummary> | null = null;
@@ -52,6 +66,7 @@ async function doSync(): Promise<SyncSummary> {
 		const apps = await fetchAppDetails(appids);
 		summary.failed = appids.length - apps.size;
 		applySteamData(apps, new Set(appids), summary);
+		await enrichPlayStation(summary);
 	} catch (e) {
 		summary.error = e instanceof Error ? e.message : String(e);
 	}
@@ -90,3 +105,43 @@ const applySteamData = db.transaction(
 		}
 	}
 );
+
+/**
+ * Determines PS4/PS5 availability for every Steam-synced game via IGDB's
+ * exact appid mapping, then fills ps5 platform rows (release date, PS Store
+ * star rating, concept link). Games IGDB doesn't know stay untouched.
+ */
+async function enrichPlayStation(summary: SyncSummary): Promise<void> {
+	const rows = stmts.selectSteamGames.all() as { id: number; steam_appid: number }[];
+	const infos = await lookupSteamApps(rows.map((r) => r.steam_appid));
+
+	const onPlayStation: { id: number; psReleaseDate: string | null; conceptId: string | null }[] =
+		[];
+	for (const row of rows) {
+		const info = infos.get(row.steam_appid);
+		if (!info) continue;
+		stmts.setIgdbData.run(info.igdbId, info.psnConceptId, row.id);
+		if (info.onPlayStation) {
+			onPlayStation.push({ id: row.id, psReleaseDate: info.psReleaseDate, conceptId: info.psnConceptId });
+		} else {
+			stmts.deletePs5Row.run(row.id);
+		}
+	}
+	summary.ps5 = onPlayStation.length;
+
+	// Star ratings come from the public store pages; fetch a few at a time.
+	for (let i = 0; i < onPlayStation.length; i += RATING_CONCURRENCY) {
+		const batch = onPlayStation.slice(i, i + RATING_CONCURRENCY);
+		const ratings = await Promise.all(
+			batch.map((g) => (g.conceptId ? fetchConceptRating(g.conceptId).catch(() => null) : null))
+		);
+		batch.forEach((game, j) => {
+			stmts.upsertPs5Row.run(
+				game.id,
+				game.psReleaseDate,
+				ratings[j],
+				game.conceptId ? conceptUrl(game.conceptId) : null
+			);
+		});
+	}
+}

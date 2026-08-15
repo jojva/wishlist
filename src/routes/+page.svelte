@@ -141,7 +141,7 @@
 				{data.lastSync.added} added, {data.lastSync.updated} updated, {data.lastSync.removed} removed{data
 					.lastSync.failed
 					? `, ${data.lastSync.failed} unavailable`
-					: ''}
+					: ''}{data.lastSync.ps5 !== undefined ? `, ${data.lastSync.ps5} on PS5` : ''}
 			{/if}
 		</p>
 	{/if}

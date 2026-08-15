@@ -25,5 +25,7 @@ export interface SyncSummary {
 	updated: number;
 	removed: number;
 	failed: number;
+	/** Games confirmed available on PS4/PS5 during enrichment. */
+	ps5?: number;
 	error?: string;
 }

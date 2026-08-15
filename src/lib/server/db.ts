@@ -74,6 +74,12 @@ const migrations = [
 		SELECT game_id, platform, release_date, score, store_url FROM game_platforms;
 	DROP TABLE game_platforms;
 	ALTER TABLE game_platforms_new RENAME TO game_platforms;
+	`,
+	// 4: PS5 availability enrichment via IGDB (igdb_id caches the mapping,
+	// psn_concept_id identifies the game on the PS Store).
+	`
+	ALTER TABLE games ADD COLUMN igdb_id INTEGER;
+	ALTER TABLE games ADD COLUMN psn_concept_id TEXT;
 	`
 ];
 
