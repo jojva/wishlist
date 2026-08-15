@@ -81,6 +81,15 @@
 	function formatSyncTime(iso: string): string {
 		return iso.slice(0, 16).replace('T', ' ') + ' UTC';
 	}
+
+	const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+	/** ISO dates become Steam-style ("6 Aug, 2026"); free-form text ("Coming soon") passes through. */
+	function formatDate(date: string): string {
+		const m = date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+		if (!m) return date;
+		return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}, ${m[1]}`;
+	}
 </script>
 
 {#snippet cardBody(game: Game)}
@@ -99,12 +108,15 @@
 		<div class="platforms">
 			{#each game.platforms as p (p.platform)}
 				<div class="platform">
-					<span class="chip {p.platform}">{p.platform === 'pc' ? 'PC' : 'PS5'}</span>
-					<span class="date">{p.release_date ?? 'TBA'}</span>
-					<span class="score">{p.score ?? '—'}</span>
 					{#if p.store_url}
-						<a href={p.store_url} target="_blank" rel="noreferrer">Store ↗</a>
+						<a class="chip {p.platform}" href={p.store_url} target="_blank" rel="noreferrer">
+							{p.platform === 'pc' ? 'PC' : 'PS5'}
+						</a>
+					{:else}
+						<span class="chip {p.platform}">{p.platform === 'pc' ? 'PC' : 'PS5'}</span>
 					{/if}
+					<span class="date">{p.release_date ? formatDate(p.release_date) : 'TBA'}</span>
+					<span class="score">{p.score ?? '—'}</span>
 				</div>
 			{/each}
 		</div>
@@ -443,12 +455,12 @@
 		color: #9bb7ff;
 	}
 
-	.platform a {
-		color: #6ea8fe;
+	a.chip {
 		text-decoration: none;
 	}
 
-	.platform a:hover {
+	a.chip:hover {
+		filter: brightness(1.35);
 		text-decoration: underline;
 	}
 
