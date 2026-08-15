@@ -80,6 +80,14 @@ const migrations = [
 	`
 	ALTER TABLE games ADD COLUMN igdb_id INTEGER;
 	ALTER TABLE games ADD COLUMN psn_concept_id TEXT;
+	`,
+	// 5: explicit wishlist-membership flags. steam_appid / psn_concept_id
+	// are pure store identities from here on; membership (and the source
+	// badges) live in these flags, and a game is removed only when both are 0.
+	`
+	ALTER TABLE games ADD COLUMN steam_wishlisted INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE games ADD COLUMN psn_wishlisted INTEGER NOT NULL DEFAULT 0;
+	UPDATE games SET steam_wishlisted = 1 WHERE steam_appid IS NOT NULL;
 	`
 ];
 
@@ -89,6 +97,24 @@ for (let version = applied; version < migrations.length; version++) {
 		db.exec(migrations[version]);
 		db.pragma(`user_version = ${version + 1}`);
 	})();
+}
+
+const metaGet = db.prepare('SELECT value FROM meta WHERE key = ?');
+const metaSet = db.prepare(
+	'INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value'
+);
+const metaDelete = db.prepare('DELETE FROM meta WHERE key = ?');
+
+export function getMeta(key: string): string | null {
+	return (metaGet.get(key) as { value: string } | undefined)?.value ?? null;
+}
+
+export function setMeta(key: string, value: string): void {
+	metaSet.run(key, value);
+}
+
+export function deleteMeta(key: string): void {
+	metaDelete.run(key);
 }
 
 export default db;

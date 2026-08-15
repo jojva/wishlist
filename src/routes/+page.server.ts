@@ -3,12 +3,15 @@ import { getLastSync } from '$lib/server/sync';
 import type { Game, PlatformInfo, SourceId } from '$lib/types';
 import type { PageServerLoad } from './$types';
 
-type GameRow = Omit<Game, 'platforms' | 'sources'> & { steam_appid: number | null };
+type GameRow = Omit<Game, 'platforms' | 'sources'> & {
+	steam_wishlisted: number;
+	psn_wishlisted: number;
+};
 type PlatformRow = PlatformInfo & { game_id: number };
 
 export const load: PageServerLoad = () => {
 	const gameRows = db
-		.prepare('SELECT id, title, thumbnail_url, rank, steam_appid FROM games')
+		.prepare('SELECT id, title, thumbnail_url, rank, steam_wishlisted, psn_wishlisted FROM games')
 		.all() as GameRow[];
 	const platformRows = db
 		.prepare(
@@ -16,9 +19,10 @@ export const load: PageServerLoad = () => {
 		)
 		.all() as PlatformRow[];
 
-	const games: Game[] = gameRows.map(({ steam_appid, ...row }) => {
+	const games: Game[] = gameRows.map(({ steam_wishlisted, psn_wishlisted, ...row }) => {
 		const sources: SourceId[] = [];
-		if (steam_appid !== null) sources.push('steam');
+		if (steam_wishlisted) sources.push('steam');
+		if (psn_wishlisted) sources.push('psn');
 		return { ...row, sources, platforms: [] };
 	});
 	const byId = new Map(games.map((g) => [g.id, g]));

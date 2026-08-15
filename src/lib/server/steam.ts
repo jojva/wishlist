@@ -34,6 +34,9 @@ export async function fetchWishlistAppids(steamId: string): Promise<number[]> {
 	const body = await res.json();
 	const items: unknown = body?.response?.items;
 	if (!Array.isArray(items)) throw new Error('Unexpected Steam wishlist response shape');
+	// An empty list is far more likely a transient API failure than a
+	// deliberately emptied wishlist — refuse rather than wipe every game.
+	if (items.length === 0) throw new Error('Steam wishlist came back empty — refusing to sync');
 	return items.map((item: { appid: number }) => item.appid);
 }
 

@@ -139,6 +139,7 @@
 			<button class="sync" onclick={sync} disabled={syncing}>
 				{syncing ? '⟳ Syncing…' : '⟳ Sync'}
 			</button>
+			<a class="settings-link" href="/settings" title="Settings">⚙</a>
 		</div>
 	</header>
 
@@ -156,6 +157,10 @@
 					: ''}{data.lastSync.ps5 !== undefined ? `, ${data.lastSync.ps5} on PS5` : ''}
 			{/if}
 		</p>
+	{/if}
+
+	{#if data.lastSync?.psnError}
+		<p class="sync-info warn">PSN: {data.lastSync.psnError} — <a href="/settings">Settings</a></p>
 	{/if}
 
 	{#if ranked.length === 0 && unranked.length === 0}
@@ -288,6 +293,24 @@
 
 	.sync-info.error {
 		color: #ff7b72;
+	}
+
+	.sync-info.warn {
+		color: #e3b341;
+	}
+
+	.sync-info.warn a {
+		color: #6ea8fe;
+	}
+
+	.settings-link {
+		color: #8b93a3;
+		text-decoration: none;
+		font-size: 1.2rem;
+	}
+
+	.settings-link:hover {
+		color: #e6e9ef;
 	}
 
 	.empty {

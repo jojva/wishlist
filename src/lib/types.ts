@@ -27,5 +27,7 @@ export interface SyncSummary {
 	failed: number;
 	/** Games confirmed available on PS4/PS5 during enrichment. */
 	ps5?: number;
+	/** The PSN wishlist part failed (e.g. expired NPSSO); Steam data is still fresh. */
+	psnError?: string;
 	error?: string;
 }
