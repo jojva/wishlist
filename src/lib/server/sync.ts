@@ -7,7 +7,7 @@ import { fetchPsnWishlist, type PsnWishlistItem } from './psnWishlist';
 import {
 	conceptUrl,
 	fetchConceptRating,
-	fetchConceptReleaseDate,
+	fetchConceptSummary,
 	resolveProductToConcept
 } from './psstore';
 import { fetchAppDetails, fetchWishlistAppids, type SteamApp } from './steam';
@@ -25,6 +25,9 @@ const stmts = {
 	selectPsnOnlyGames: db.prepare(
 		'SELECT id, psn_concept_id FROM games WHERE psn_concept_id IS NOT NULL AND steam_appid IS NULL'
 	),
+	selectPsnPrimaryGames: db.prepare(
+		'SELECT id, psn_concept_id FROM games WHERE psn_wishlisted = 1 AND steam_wishlisted = 0 AND psn_concept_id IS NOT NULL'
+	),
 	selectRatableGames: db.prepare(`
 		SELECT g.id, g.psn_concept_id FROM games g
 		JOIN game_platforms p ON p.game_id = g.id AND p.platform = 'ps5'
@@ -41,6 +44,7 @@ const stmts = {
 		'INSERT INTO games (title, thumbnail_url, psn_concept_id, psn_wishlisted) VALUES (?, ?, ?, 1)'
 	),
 	updateGameMeta: db.prepare('UPDATE games SET title = ?, thumbnail_url = ? WHERE id = ?'),
+	setTitle: db.prepare('UPDATE games SET title = ? WHERE id = ?'),
 	// PSN wishlist concept IDs are authoritative; IGDB only fills gaps.
 	setIgdbData: db.prepare(
 		'UPDATE games SET igdb_id = ?, psn_concept_id = COALESCE(psn_concept_id, ?) WHERE id = ?'
@@ -153,7 +157,9 @@ const applySteamData = db.transaction(
 				stmts.upsertPcRow.run(lastInsertRowid, app.releaseDate, app.score, app.storeUrl);
 				summary.added++;
 			} else {
-				stmts.updateGameMeta.run(app.name, app.thumbnailUrl, gameId);
+				// Presentation (title/art) belongs to the wishlist the game is on:
+				// PSN-primary games keep their IGDB title and PS Store box art.
+				if (wishlisted.has(app.appid)) stmts.updateGameMeta.run(app.name, app.thumbnailUrl, gameId);
 				stmts.upsertPcRow.run(gameId, app.releaseDate, app.score, app.storeUrl);
 				summary.updated++;
 			}
@@ -270,39 +276,75 @@ const applyPsnData = db.transaction(
 	}
 );
 
-// --- IGDB reverse enrichment (PSN concept -> PC availability) -----------------
+// --- IGDB reverse enrichment (PSN concept -> PC availability + English title) --
 
 async function enrichPcAvailability(): Promise<void> {
 	const psnOnly = stmts.selectPsnOnlyGames.all() as { id: number; psn_concept_id: string }[];
 	if (psnOnly.length === 0) return;
 
 	const matches = await lookupPsnConcepts(psnOnly.map((r) => r.psn_concept_id));
-	const withSteam = psnOnly.flatMap((row) => {
-		const appid = matches.get(row.psn_concept_id)?.steamAppid;
-		return appid ? [{ id: row.id, appid }] : [];
-	});
-	if (withSteam.length === 0) return;
 
-	const apps = await fetchAppDetails(withSteam.map((x) => x.appid));
+	// The PS wishlist serves regional SKU names ("Metaphor: ReFantazio PS4 et
+	// PS5"); IGDB's canonical English name replaces them where known.
 	db.transaction(() => {
-		for (const { id, appid } of withSteam) {
-			const app = apps.get(appid);
-			if (!app) continue;
-			stmts.setSteamIdentity.run(appid, id);
-			stmts.upsertPcRow.run(id, app.releaseDate, app.score, app.storeUrl);
+		for (const row of psnOnly) {
+			const name = matches.get(row.psn_concept_id)?.name;
+			if (name) stmts.setTitle.run(name, row.id);
 		}
 	})();
+
+	const candidates = psnOnly.flatMap((row) => {
+		const match = matches.get(row.psn_concept_id);
+		return match?.steamAppids.length ? [{ id: row.id, name: match.name, appids: match.steamAppids }] : [];
+	});
+	if (candidates.length === 0) return;
+
+	const apps = await fetchAppDetails([...new Set(candidates.flatMap((c) => c.appids))]);
+	db.transaction(() => {
+		for (const { id, name, appids } of candidates) {
+			const found = appids.map((appid) => apps.get(appid)).filter((a) => a !== undefined);
+			if (found.length === 0) continue;
+			const best = pickBestSteamApp(found, name);
+			stmts.setSteamIdentity.run(best.appid, id);
+			stmts.upsertPcRow.run(id, best.releaseDate, best.score, best.storeUrl);
+		}
+	})();
+}
+
+/**
+ * IGDB links playtests/demos/components to the same game as the main app.
+ * Prefer the app whose name matches IGDB's canonical name; fall back to the
+ * lowest appid (main games predate their playtests and sub-apps).
+ */
+function pickBestSteamApp(apps: SteamApp[], canonicalName: string | null): SteamApp {
+	const normalize = (s: string) =>
+		s
+			.toLowerCase()
+			.replace(/[™®©]/g, '')
+			.replace(/\s+/g, ' ')
+			.trim();
+	if (canonicalName) {
+		const exact = apps.find((a) => normalize(a.name) === normalize(canonicalName));
+		if (exact) return exact;
+	}
+	return apps.reduce((a, b) => (a.appid <= b.appid ? a : b));
 }
 
 // --- PS Store data (anonymous): release dates + star ratings ------------------
 
 async function refreshPs5Data(): Promise<void> {
-	// Steam-identified games get their PS date from IGDB; PSN-only games
-	// need it from the store's game-info slice.
-	const psnOnly = stmts.selectPsnOnlyGames.all() as { id: number; psn_concept_id: string }[];
-	await mapConcurrent(psnOnly, async (row) => {
-		const date = await fetchConceptReleaseDate(row.psn_concept_id).catch(() => null);
-		if (date) stmts.setPs5ReleaseDate.run(date, row.id);
+	// PSN-primary games take Sony's English concept name (their wishlist and
+	// IGDB names can be regional SKUs or mislabeled sub-entries) and Sony's
+	// own PS release date, both from the US store.
+	const psnPrimary = stmts.selectPsnPrimaryGames.all() as {
+		id: number;
+		psn_concept_id: string;
+	}[];
+	await mapConcurrent(psnPrimary, async (row) => {
+		const summary = await fetchConceptSummary(row.psn_concept_id).catch(() => null);
+		if (!summary) return;
+		if (summary.name) stmts.setTitle.run(summary.name, row.id);
+		if (summary.releaseDate) stmts.setPs5ReleaseDate.run(summary.releaseDate, row.id);
 	});
 
 	const ratable = stmts.selectRatableGames.all() as { id: number; psn_concept_id: string }[];

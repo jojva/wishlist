@@ -22,6 +22,7 @@ interface ExternalGameRow {
 
 interface GameRow {
 	id: number;
+	name?: string;
 	platforms?: number[];
 	release_dates?: { platform: number; date?: number; human?: string }[];
 	external_games?: { uid: string; external_game_source: number }[];
@@ -97,7 +98,10 @@ export async function lookupSteamApps(appids: number[]): Promise<Map<number, Igd
 
 export interface PsnConceptMatch {
 	igdbId: number;
-	steamAppid: number | null;
+	/** All Steam appids IGDB links to the game — may include playtests/demos. */
+	steamAppids: number[];
+	/** IGDB's canonical (English) game name. */
+	name: string | null;
 }
 
 /** Resolves PS Store concept IDs to IGDB games and their Steam appid, if any. */
@@ -125,13 +129,20 @@ export async function lookupPsnConcepts(
 		const ids = gameIds.slice(i, i + CHUNK_SIZE).join(',');
 		const rows = await query<GameRow>(
 			'games',
-			`fields external_games.uid, external_games.external_game_source; where id = (${ids}); limit 500;`
+			`fields name, external_games.uid, external_games.external_game_source; where id = (${ids}); limit 500;`
 		);
 		for (const row of rows) {
 			const conceptId = conceptByGameId.get(row.id);
 			if (conceptId === undefined) continue;
-			const steam = row.external_games?.find((e) => e.external_game_source === SOURCE_STEAM);
-			result.set(conceptId, { igdbId: row.id, steamAppid: steam ? Number(steam.uid) : null });
+			const steamAppids = (row.external_games ?? [])
+				.filter((e) => e.external_game_source === SOURCE_STEAM)
+				.map((e) => Number(e.uid))
+				.filter(Number.isFinite);
+			result.set(conceptId, {
+				igdbId: row.id,
+				steamAppids,
+				name: row.name?.trim() || null
+			});
 		}
 	}
 

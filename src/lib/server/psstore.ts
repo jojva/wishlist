@@ -9,9 +9,9 @@ const OPS = {
 		name: 'wcaConceptStarRatingRetrive',
 		hash: 'e12dc5cef72296a437b4d71e0b130010bf3707ab981b585ba00d1d5773ce2092'
 	},
-	gameInfo: {
-		name: 'conceptRetrieveForGameInfo',
-		hash: '156bf37e6d6091b4d584ebf5f430a65e818b6120525dd82a0745352d21619da6'
+	gameTitle: {
+		name: 'conceptRetrieveForGameTitle',
+		hash: 'd244286e38044363f1fb6707f719d41558c74542fc421503a38124ca87068812'
 	},
 	conceptByProduct: {
 		name: 'metGetConceptByProductIdQuery',
@@ -21,7 +21,14 @@ const OPS = {
 
 type Operation = (typeof OPS)[keyof typeof OPS];
 
-async function webQuery(op: Operation, variables: Record<string, string>): Promise<unknown> {
+// fr-FR by default: the wishlist holds French-store (EP-prefixed) product IDs,
+// which only resolve in the matching store region. en-US is used where we
+// specifically want English-localized content.
+async function webQuery(
+	op: Operation,
+	variables: Record<string, string>,
+	locale = 'fr-FR'
+): Promise<unknown> {
 	const params = new URLSearchParams({
 		operationName: op.name,
 		variables: JSON.stringify(variables),
@@ -33,10 +40,8 @@ async function webQuery(op: Operation, variables: Record<string, string>): Promi
 			// Apollo's CSRF prevention rejects "simple" GETs with HTTP 400
 			// unless this header forces a preflight-class request.
 			'apollo-require-preflight': 'true',
-			// The wishlist holds French-store (EP-prefixed) product IDs, which
-			// only resolve in the matching store region.
-			'accept-language': 'fr-FR',
-			'x-psn-store-locale-override': 'fr-FR'
+			'accept-language': locale,
+			'x-psn-store-locale-override': locale
 		}
 	});
 	if (!res.ok) throw new Error(`PS Store ${op.name} failed with HTTP ${res.status}`);
@@ -61,15 +66,29 @@ export async function fetchConceptRating(conceptId: string): Promise<string | nu
 	return `${average.toFixed(1)}★`;
 }
 
-/** PS release date (ISO yyyy-mm-dd), or null when unannounced. */
-export async function fetchConceptReleaseDate(conceptId: string): Promise<string | null> {
+/** English (US-store) concept name and PS release date. */
+export async function fetchConceptSummary(
+	conceptId: string
+): Promise<{ name: string | null; releaseDate: string | null }> {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const data = (await webQuery(OPS.gameInfo, { conceptId: String(conceptId) })) as any;
-	const value = data?.conceptRetrieve?.releaseDate?.value;
-	if (!value) return null;
-	const timestamp = Date.parse(value);
-	if (Number.isNaN(timestamp)) return null;
-	return new Date(timestamp).toISOString().slice(0, 10);
+	const data = (await webQuery(OPS.gameTitle, { conceptId: String(conceptId) }, 'en-US')) as any;
+	const concept = data?.conceptRetrieve;
+	const rawDate = concept?.releaseDate?.value ?? concept?.releaseDate;
+	const timestamp = typeof rawDate === 'string' ? Date.parse(rawDate) : NaN;
+	return {
+		name: typeof concept?.name === 'string' ? cleanConceptName(concept.name) : null,
+		releaseDate: Number.isNaN(timestamp) ? null : new Date(timestamp).toISOString().slice(0, 10)
+	};
+}
+
+/** Sony concept names sometimes carry platform suffixes ("… PS4 & PS5"). */
+function cleanConceptName(name: string): string | null {
+	return (
+		name
+			.trim()
+			.replace(/\s*[-–—:]?\s*(for\s+)?PS4(™)?\s*(&|and|et)\s*PS5(™)?\s*$/i, '')
+			.trim() || null
+	);
 }
 
 /** Resolves a store product ID ("UP0102-PPSA07813_00-…") to its concept ID. */

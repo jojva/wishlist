@@ -60,7 +60,7 @@ export async function fetchAppDetails(appids: number[]): Promise<Map<number, Ste
 			if (item.success !== 1 || !item.name) continue;
 			apps.set(item.appid, {
 				appid: item.appid,
-				name: item.name,
+				name: item.name.trim(),
 				thumbnailUrl: thumbnailUrl(item),
 				releaseDate: releaseDate(item),
 				score: score(item),

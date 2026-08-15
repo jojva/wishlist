@@ -53,7 +53,7 @@ export async function fetchPsnWishlist(accessToken: string): Promise<PsnWishlist
 		.map((item) => ({
 			id: String(item.id),
 			isConcept: item.__typename === 'Concept',
-			name: item.name!,
+			name: item.name!.trim(),
 			imageUrl: item.boxArt?.url ?? null
 		}));
 }
