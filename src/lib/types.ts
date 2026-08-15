@@ -1,10 +1,9 @@
 export type PlatformId = 'pc' | 'ps5';
 
-export type SourceId = 'steam' | 'psn' | 'manual';
+export type SourceId = 'steam' | 'psn';
 
 export interface PlatformInfo {
 	platform: PlatformId;
-	source: SourceId;
 	release_date: string | null;
 	score: string | null;
 	store_url: string | null;
@@ -15,6 +14,8 @@ export interface Game {
 	title: string;
 	thumbnail_url: string | null;
 	rank: number | null;
+	/** Which wishlists the game is on — independent from platform availability. */
+	sources: SourceId[];
 	platforms: PlatformInfo[];
 }
 

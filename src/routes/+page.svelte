@@ -75,13 +75,8 @@
 
 	const sourceLabels: Record<SourceId, string> = {
 		steam: 'Steam',
-		psn: 'PS Store',
-		manual: 'Manual'
+		psn: 'PS Store'
 	};
-
-	function sourcesOf(game: Game): SourceId[] {
-		return [...new Set(game.platforms.map((p) => p.source))];
-	}
 
 	function formatSyncTime(iso: string): string {
 		return iso.slice(0, 16).replace('T', ' ') + ' UTC';
@@ -97,7 +92,7 @@
 	<div class="info">
 		<div class="title-row">
 			<h2>{game.title}</h2>
-			{#each sourcesOf(game) as source (source)}
+			{#each game.sources as source (source)}
 				<span class="source {source}">{sourceLabels[source]}</span>
 			{/each}
 		</div>
@@ -413,11 +408,6 @@
 	.source.psn {
 		background: #0f2f6b;
 		color: #9bb7ff;
-	}
-
-	.source.manual {
-		background: #2c3446;
-		color: #aeb6c4;
 	}
 
 	.platforms {

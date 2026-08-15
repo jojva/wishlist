@@ -56,6 +56,24 @@ const migrations = [
 		key TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	);
+	`,
+	// 3: decorrelate platforms from wishlists. Platform rows now describe
+	// where a game exists (availability + metadata); wishlist membership
+	// lives on games (steam_appid, later a PSN id). Manual entries are
+	// dropped as a concept, so the source column goes away entirely.
+	`
+	CREATE TABLE game_platforms_new (
+		game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+		platform TEXT NOT NULL CHECK (platform IN ('pc', 'ps5')),
+		release_date TEXT,
+		score TEXT,
+		store_url TEXT,
+		PRIMARY KEY (game_id, platform)
+	);
+	INSERT INTO game_platforms_new (game_id, platform, release_date, score, store_url)
+		SELECT game_id, platform, release_date, score, store_url FROM game_platforms;
+	DROP TABLE game_platforms;
+	ALTER TABLE game_platforms_new RENAME TO game_platforms;
 	`
 ];
 

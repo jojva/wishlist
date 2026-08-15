@@ -9,19 +9,13 @@ const stmts = {
 	),
 	getLastSync: db.prepare("SELECT value FROM meta WHERE key = 'last_sync'"),
 	selectSteamGames: db.prepare('SELECT id, steam_appid FROM games WHERE steam_appid IS NOT NULL'),
-	deleteSteamPcRow: db.prepare(
-		"DELETE FROM game_platforms WHERE game_id = ? AND platform = 'pc' AND source = 'steam'"
-	),
-	countPlatforms: db.prepare('SELECT COUNT(*) AS n FROM game_platforms WHERE game_id = ?'),
 	deleteGame: db.prepare('DELETE FROM games WHERE id = ?'),
-	clearSteamAppid: db.prepare('UPDATE games SET steam_appid = NULL WHERE id = ?'),
 	insertGame: db.prepare('INSERT INTO games (title, thumbnail_url, steam_appid) VALUES (?, ?, ?)'),
 	updateGame: db.prepare('UPDATE games SET title = ?, thumbnail_url = ? WHERE id = ?'),
 	upsertPcRow: db.prepare(`
-		INSERT INTO game_platforms (game_id, platform, source, release_date, score, store_url)
-		VALUES (?, 'pc', 'steam', ?, ?, ?)
+		INSERT INTO game_platforms (game_id, platform, release_date, score, store_url)
+		VALUES (?, 'pc', ?, ?, ?)
 		ON CONFLICT (game_id, platform) DO UPDATE SET
-			source = 'steam',
 			release_date = excluded.release_date,
 			score = excluded.score,
 			store_url = excluded.store_url
@@ -72,14 +66,12 @@ const applySteamData = db.transaction(
 		const existing = stmts.selectSteamGames.all() as { id: number; steam_appid: number }[];
 		const gameIdByAppid = new Map(existing.map((row) => [row.steam_appid, row.id]));
 
-		// Games that left the Steam wishlist lose their Steam platform data;
-		// the game itself is only deleted when no other source remains.
+		// A game on neither wishlist is removed. Until PSN sync exists, leaving
+		// the Steam wishlist means leaving both. (Once PSN membership exists,
+		// this must clear steam_appid instead when the game is still on PSN.)
 		for (const row of existing) {
 			if (wishlisted.has(row.steam_appid)) continue;
-			stmts.deleteSteamPcRow.run(row.id);
-			const { n } = stmts.countPlatforms.get(row.id) as { n: number };
-			if (n === 0) stmts.deleteGame.run(row.id);
-			else stmts.clearSteamAppid.run(row.id);
+			stmts.deleteGame.run(row.id);
 			summary.removed++;
 		}
 
