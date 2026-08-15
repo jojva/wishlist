@@ -30,6 +30,10 @@ export async function fetchPsnWishlist(accessToken: string): Promise<PsnWishlist
 		headers: {
 			authorization: `Bearer ${accessToken}`,
 			'apollographql-client-name': 'PlayStationApp-Android',
+			// Apollo's CSRF prevention rejects "simple" GETs with HTTP 400
+			// unless this header forces a preflight-class request.
+			'apollo-require-preflight': 'true',
+			'accept-language': 'en-US',
 			accept: 'application/json'
 		}
 	});

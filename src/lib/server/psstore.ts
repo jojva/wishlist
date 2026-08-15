@@ -28,7 +28,16 @@ async function webQuery(op: Operation, variables: Record<string, string>): Promi
 		extensions: JSON.stringify({ persistedQuery: { version: 1, sha256Hash: op.hash } })
 	});
 	const res = await fetch(`${WEB_GRAPHQL}?${params}`, {
-		headers: { accept: 'application/json', 'x-psn-store-locale-override': 'en-US' }
+		headers: {
+			accept: 'application/json',
+			// Apollo's CSRF prevention rejects "simple" GETs with HTTP 400
+			// unless this header forces a preflight-class request.
+			'apollo-require-preflight': 'true',
+			// The wishlist holds French-store (EP-prefixed) product IDs, which
+			// only resolve in the matching store region.
+			'accept-language': 'fr-FR',
+			'x-psn-store-locale-override': 'fr-FR'
+		}
 	});
 	if (!res.ok) throw new Error(`PS Store ${op.name} failed with HTTP ${res.status}`);
 	const body = await res.json();

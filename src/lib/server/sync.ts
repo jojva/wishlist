@@ -45,6 +45,7 @@ const stmts = {
 	setIgdbData: db.prepare(
 		'UPDATE games SET igdb_id = ?, psn_concept_id = COALESCE(psn_concept_id, ?) WHERE id = ?'
 	),
+	setPsnConcept: db.prepare('UPDATE games SET psn_concept_id = ? WHERE id = ?'),
 	setSteamIdentity: db.prepare('UPDATE games SET steam_appid = ? WHERE id = ?'),
 	deleteOrphans: db.prepare('DELETE FROM games WHERE steam_wishlisted = 0 AND psn_wishlisted = 0'),
 	upsertPcRow: db.prepare(`
@@ -210,18 +211,33 @@ async function syncPsnWishlist(summary: SyncSummary): Promise<void> {
 		else summary.failed++;
 	});
 
-	applyPsnData(resolved, summary);
+	// Concepts we don't know yet might still be games we already track via
+	// Steam under a different (IGDB-supplied) concept ID — resolve through
+	// IGDB's Sony-concept -> Steam-appid mapping to avoid duplicate cards.
+	const known = new Set(
+		(stmts.selectPsnGames.all() as { psn_concept_id: string }[]).map((r) => r.psn_concept_id)
+	);
+	const unknown = [...new Set(resolved.map((r) => r.conceptId))].filter((c) => !known.has(c));
+	const igdbMatches = unknown.length ? await lookupPsnConcepts(unknown) : new Map();
+
+	applyPsnData(resolved, igdbMatches, summary);
 	await enrichPcAvailability();
 }
 
 const applyPsnData = db.transaction(
-	(resolved: { item: PsnWishlistItem; conceptId: string }[], summary: SyncSummary) => {
-		const existing = stmts.selectPsnGames.all() as {
+	(
+		resolved: { item: PsnWishlistItem; conceptId: string }[],
+		igdbMatches: Map<string, { steamAppid: number | null }>,
+		summary: SyncSummary
+	) => {
+		const psnRows = stmts.selectPsnGames.all() as {
 			id: number;
 			psn_concept_id: string;
 			steam_appid: number | null;
 		}[];
-		const byConcept = new Map(existing.map((row) => [row.psn_concept_id, row]));
+		const byConcept = new Map(psnRows.map((row) => [row.psn_concept_id, row]));
+		const steamRows = stmts.selectSteamGames.all() as { id: number; steam_appid: number }[];
+		const bySteamAppid = new Map(steamRows.map((row) => [row.steam_appid, row.id]));
 
 		stmts.clearAllPsnWishlisted.run();
 		const seen = new Set<string>();
@@ -230,13 +246,21 @@ const applyPsnData = db.transaction(
 			if (seen.has(conceptId)) continue; // several editions can share a concept
 			seen.add(conceptId);
 
-			const match = byConcept.get(conceptId);
-			if (match) {
-				stmts.setPsnWishlisted.run(match.id);
+			const conceptMatch = byConcept.get(conceptId);
+			const steamAppid = igdbMatches.get(conceptId)?.steamAppid;
+			const steamMatchId =
+				conceptMatch === undefined && steamAppid ? bySteamAppid.get(steamAppid) : undefined;
+			const gameId = conceptMatch?.id ?? steamMatchId;
+
+			if (gameId !== undefined) {
+				stmts.setPsnWishlisted.run(gameId);
+				// Sony's own concept ID outranks whatever IGDB supplied.
+				stmts.setPsnConcept.run(conceptId, gameId);
 				// Steam's landscape header images fit the cards better, so only
 				// PSN-only games take their title/box art from the PS Store.
-				if (match.steam_appid === null) stmts.updateGameMeta.run(item.name, item.imageUrl, match.id);
-				stmts.upsertPs5Availability.run(match.id, null, conceptUrl(conceptId));
+				const hasSteam = steamMatchId !== undefined || conceptMatch?.steam_appid !== null;
+				if (!hasSteam) stmts.updateGameMeta.run(item.name, item.imageUrl, gameId);
+				stmts.upsertPs5Availability.run(gameId, null, conceptUrl(conceptId));
 			} else {
 				const { lastInsertRowid } = stmts.insertPsnGame.run(item.name, item.imageUrl, conceptId);
 				stmts.upsertPs5Availability.run(lastInsertRowid, null, conceptUrl(conceptId));
