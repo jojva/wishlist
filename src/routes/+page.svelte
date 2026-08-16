@@ -92,14 +92,29 @@
 		if (!m) return date;
 		return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}, ${m[1]}`;
 	}
+
+	/** Unreleased everywhere: only a concrete (ISO) past date counts as released — free-form
+	    dates like "Coming 2026" and NULL/TBA don't. */
+	function isUnreleased(game: Game): boolean {
+		const today = new Date().toISOString().slice(0, 10);
+		return !game.platforms.some(
+			(p) => p.release_date !== null && /^\d{4}-\d{2}-\d{2}$/.test(p.release_date) && p.release_date <= today
+		);
+	}
 </script>
 
 {#snippet cardBody(game: Game)}
-	{#if game.thumbnail_url}
-		<img class="thumb" src={game.thumbnail_url} alt="" loading="lazy" />
-	{:else}
-		<div class="thumb placeholder">🕹️</div>
-	{/if}
+	{@const unreleased = isUnreleased(game)}
+	<div class="thumb-frame" class:unreleased>
+		{#if game.thumbnail_url}
+			<img class="thumb" src={game.thumbnail_url} alt="" loading="lazy" />
+		{:else}
+			<div class="thumb placeholder">🕹️</div>
+		{/if}
+		{#if unreleased}
+			<span class="stamp">SOON</span>
+		{/if}
+	</div>
 	<div class="info">
 		<div class="title-row">
 			<h2>{game.title}</h2>
@@ -394,12 +409,44 @@
 		color: #8b93a3;
 	}
 
+	.thumb-frame {
+		position: relative;
+		flex-shrink: 0;
+	}
+
 	.thumb {
+		display: block;
 		width: 184px;
 		height: 86px;
 		object-fit: cover;
 		border-radius: 8px;
-		flex-shrink: 0;
+	}
+
+	.thumb-frame.unreleased .thumb {
+		filter: brightness(0.82);
+	}
+
+	.stamp {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		/* Centered on the art, nudged up-right, with a rubber-stamp tilt. */
+		transform: translate(calc(-50% + 1.4rem), calc(-50% - 0.9rem)) rotate(-14deg);
+		font-size: 1.1rem;
+		font-weight: 900;
+		letter-spacing: 0.24em;
+		text-indent: 0.24em;
+		white-space: nowrap;
+		color: #ffd43b;
+		border: 3px solid #ffd43b;
+		border-radius: 8px;
+		padding: 0.18rem 0.6rem;
+		background: rgba(12 14 20 / 0.3);
+		text-shadow: 0 1px 6px rgba(0 0 0 / 0.55);
+		box-shadow:
+			0 2px 10px rgba(0 0 0 / 0.35),
+			inset 0 0 10px rgba(0 0 0 / 0.3);
+		pointer-events: none;
 	}
 
 	.thumb.placeholder {
@@ -529,11 +576,14 @@
 			font-size: 1.15rem;
 		}
 
-		.thumb {
+		.thumb-frame {
 			flex: 1 1 auto;
-			width: auto;
-			height: auto;
 			min-width: 0;
+		}
+
+		.thumb {
+			width: 100%;
+			height: auto;
 			aspect-ratio: 460 / 215;
 		}
 
