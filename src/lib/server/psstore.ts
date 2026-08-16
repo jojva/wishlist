@@ -63,7 +63,7 @@ export async function fetchConceptRating(conceptId: string): Promise<string | nu
 	const rating = data?.conceptRetrieve?.defaultProduct?.starRating;
 	const average = Number(rating?.averageRating);
 	if (!rating?.totalRatingsCount || !Number.isFinite(average)) return null;
-	return `${average.toFixed(1)}★`;
+	return `${average.toFixed(2)}★`;
 }
 
 /** English (US-store) concept name and PS release date. */
