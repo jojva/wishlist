@@ -461,6 +461,10 @@
 		color: #aeb6c4;
 	}
 
+	.date {
+		white-space: nowrap;
+	}
+
 	.chip {
 		font-size: 0.7rem;
 		font-weight: 700;
@@ -511,5 +515,34 @@
 		border-radius: 6px;
 		padding: 0.35rem 0.7rem;
 		cursor: pointer;
+	}
+
+	/* Narrow screens: the fixed-width thumb + info row doesn't fit, so stack the
+	   card — rank + full-width art on top, info (and the tray's rank form) below. */
+	@media (max-width: 640px) {
+		.card {
+			flex-wrap: wrap;
+		}
+
+		.rank {
+			min-width: 1.6rem;
+			font-size: 1.15rem;
+		}
+
+		.thumb {
+			flex: 1 1 auto;
+			width: auto;
+			height: auto;
+			min-width: 0;
+			aspect-ratio: 460 / 215;
+		}
+
+		.info {
+			flex-basis: 100%;
+		}
+
+		.jump {
+			flex-basis: 100%;
+		}
 	}
 </style>
