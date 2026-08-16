@@ -17,6 +17,8 @@
 
 	const flipDurationMs = 150;
 	const dndType = 'game';
+	// On touch devices, require a 200ms hold before a drag starts so swipes scroll the page.
+	const delayTouchStart = 200;
 
 	function considerRanked(e: CustomEvent<DndEvent<Game>>) {
 		ranked = e.detail.items;
@@ -177,7 +179,7 @@
 			{#if trayOpen}
 				<div
 					class="tray-list"
-					use:dndzone={{ items: unranked, flipDurationMs, type: dndType }}
+					use:dndzone={{ items: unranked, flipDurationMs, type: dndType, delayTouchStart }}
 					onconsider={considerTray}
 					onfinalize={finalizeTray}
 				>
@@ -204,7 +206,7 @@
 
 	<section
 		class="ranked-list"
-		use:dndzone={{ items: ranked, flipDurationMs, type: dndType }}
+		use:dndzone={{ items: ranked, flipDurationMs, type: dndType, delayTouchStart }}
 		onconsider={considerRanked}
 		onfinalize={finalizeRanked}
 	>
