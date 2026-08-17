@@ -87,6 +87,19 @@
 		return () => clearInterval(timer);
 	});
 
+	/** Full local timestamp for the tooltip, e.g. "Aug 15, 2026, 23:25 GMT+2". */
+	function formatFull(iso: string): string {
+		return new Date(iso).toLocaleString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			year: 'numeric',
+			hour: '2-digit',
+			minute: '2-digit',
+			hourCycle: 'h23',
+			timeZoneName: 'shortOffset'
+		});
+	}
+
 	function formatAgo(iso: string): string {
 		const minutes = Math.floor((now - Date.parse(iso)) / 60_000);
 		if (minutes < 1) return 'just now';
@@ -163,9 +176,9 @@
 			<h1>🎮 Wishlist</h1>
 			{#if data.lastSync}
 				<p class="sync-meta">
-					Last sync {formatAgo(data.lastSync.at)}{data.lastSync.error
-						? ` — failed: ${data.lastSync.error}`
-						: ''}
+					<span class="ago" title={formatFull(data.lastSync.at)}>
+						Last sync {formatAgo(data.lastSync.at)}
+					</span>{data.lastSync.error ? ` — failed: ${data.lastSync.error}` : ''}
 				</p>
 			{/if}
 		</div>
@@ -297,6 +310,10 @@
 		margin: 0.25rem 0 0;
 		font-size: 0.8rem;
 		color: #8b93a3;
+	}
+
+	.ago {
+		cursor: help;
 	}
 
 	.header-right {
