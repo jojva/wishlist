@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A single-user, no-auth web app that merges a personal Steam wishlist and PSN wishlist into one drag-and-drop-ranked list of games, cross-referencing each game's availability, release date, and score on both PC and PS5. Runs on a VPS behind nginx at https://wishlist.jojva.io/.
+A single-user, no-auth web app that merges a personal Steam wishlist and PSN wishlist into one drag-and-drop-ranked list of games, cross-referencing each game's availability, release date, and score on both PC and PS5. Runs on a VPS behind nginx (public origin and deploy target are configured in `.env`, not checked in).
 
 ## Commands
 

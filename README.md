@@ -2,7 +2,7 @@
 
 A single-user, no-auth web app that merges a personal **Steam wishlist** and **PSN wishlist** into one drag-and-drop-ranked list of games. Each game is cross-referenced across both stores: availability, release date, and score on PC and PS5, whichever wishlist it came from.
 
-Runs at [wishlist.jojva.io](https://wishlist.jojva.io/).
+Runs on a personal VPS behind nginx.
 
 ## How it works
 
@@ -33,6 +33,8 @@ npm run dev
 | --- | --- |
 | `STEAM_ID` | 64-bit Steam ID of the wishlist to sync (profile must be public) |
 | `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | Twitch developer app credentials ([dev.twitch.tv/console/apps](https://dev.twitch.tv/console/apps)) — IGDB authenticates through Twitch |
+| `ORIGIN` | Public origin the app is served at (adapter-node needs it for form POSTs; not needed for local dev) |
+| `DEPLOY_HOST` | SSH destination `deploy.sh` ships to (deploy only) |
 
 The PSN token is **not** an env var: paste a fresh NPSSO token into the Settings page (it's validated immediately and stored in the database). It expires every couple of months; the sync summary tells you when it needs replacing.
 

@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # Deploy the wishlist app: push main, pull + rebuild on the VPS, health-check.
+# DEPLOY_HOST (ssh destination) and ORIGIN (public URL) come from .env.
 set -euo pipefail
 
-HOST=joris@vps57745.vps.ovh.ca
 SSH=/usr/bin/ssh   # the real binary — the shell alias disables host-key checks
-URL=https://wishlist.jojva.io/
+
+env_get() { sed -n "s/^$1=//p" .env; }
+HOST=$(env_get DEPLOY_HOST)
+URL=$(env_get ORIGIN)
+if [ -z "$HOST" ] || [ -z "$URL" ]; then
+  echo "✗ DEPLOY_HOST and ORIGIN must be set in .env" >&2; exit 1
+fi
 
 if ! git diff-index --quiet HEAD --; then
   echo "✗ uncommitted changes — commit (or stash) first" >&2; exit 1

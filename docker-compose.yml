@@ -4,10 +4,9 @@ services:
     restart: unless-stopped
     ports:
       - '127.0.0.1:3000:3000'
+    # .env must set ORIGIN (public URL) — adapter-node needs it to accept form-action POSTs
     env_file: .env
     environment:
-      # adapter-node needs the public origin to accept form-action POSTs
-      - ORIGIN=https://wishlist.jojva.io
       # keeps the daily 06:00 sync cron on Paris time
       - TZ=Europe/Paris
     volumes:
