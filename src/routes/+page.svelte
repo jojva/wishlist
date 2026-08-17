@@ -80,8 +80,21 @@
 		psn: 'PS Store'
 	};
 
-	function formatSyncTime(iso: string): string {
-		return iso.slice(0, 16).replace('T', ' ') + ' UTC';
+	// Ticks once a minute so "Last sync … ago" stays honest in a long-lived tab.
+	let now = $state(Date.now());
+	$effect(() => {
+		const timer = setInterval(() => (now = Date.now()), 60_000);
+		return () => clearInterval(timer);
+	});
+
+	function formatAgo(iso: string): string {
+		const minutes = Math.floor((now - Date.parse(iso)) / 60_000);
+		if (minutes < 1) return 'just now';
+		if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+		const hours = Math.floor(minutes / 60);
+		if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+		const days = Math.floor(hours / 24);
+		return `${days} day${days === 1 ? '' : 's'} ago`;
 	}
 
 	const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -164,15 +177,9 @@
 		<p class="sync-info error">Sync failed: {syncError}</p>
 	{:else if data.lastSync}
 		<p class="sync-info">
-			Last sync {formatSyncTime(data.lastSync.at)} —
-			{#if data.lastSync.error}
-				failed: {data.lastSync.error}
-			{:else}
-				{data.lastSync.added} added, {data.lastSync.updated} updated, {data.lastSync.removed} removed{data
-					.lastSync.failed
-					? `, ${data.lastSync.failed} unavailable`
-					: ''}{data.lastSync.ps5 !== undefined ? `, ${data.lastSync.ps5} on PS5` : ''}
-			{/if}
+			Last sync {formatAgo(data.lastSync.at)}{data.lastSync.error
+				? ` — failed: ${data.lastSync.error}`
+				: ''}
 		</p>
 	{/if}
 
