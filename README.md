@@ -1,42 +1,53 @@
-# sv
+# Wishlist
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A single-user, no-auth web app that merges a personal **Steam wishlist** and **PSN wishlist** into one drag-and-drop-ranked list of games. Each game is cross-referenced across both stores: availability, release date, and score on PC and PS5, whichever wishlist it came from.
 
-## Creating a project
+Runs at [wishlist.jojva.io](https://wishlist.jojva.io/).
 
-If you're seeing this, you've probably already done this step. Congrats!
+## How it works
+
+A sync pipeline (manual button + daily 06:00 cron) pulls from four sources:
+
+- **Steam** — wishlist appids and store metadata, via public keyless endpoints.
+- **IGDB** — bridges the two ecosystems: maps Steam appids to PSN concept IDs and vice versa, so a game wishlisted on one store still shows its availability on the other.
+- **PSN** — the authenticated wishlist, via the mobile GraphQL API (psn-api for auth).
+- **PS Store** — English concept names, PS5 release dates, and star ratings, via anonymous persisted queries.
+
+Games land in a "To be ranked" tray, then get dragged into the ranked list. Every drop persists the full order.
+
+## Stack
+
+SvelteKit (Svelte 5 runes) · SQLite (better-sqlite3) · svelte-dnd-action · node-cron · adapter-node in Docker behind nginx.
+
+## Running locally
 
 ```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-npx sv@0.17.0 create --template minimal --types ts --no-install tmp-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
+npm install
+cp .env.example .env   # fill in the values below
 npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
 ```
 
-## Building
+`.env`:
 
-To create a production version of your app:
+| Variable | What it is |
+| --- | --- |
+| `STEAM_ID` | 64-bit Steam ID of the wishlist to sync (profile must be public) |
+| `IGDB_CLIENT_ID` / `IGDB_CLIENT_SECRET` | Twitch developer app credentials ([dev.twitch.tv/console/apps](https://dev.twitch.tv/console/apps)) — IGDB authenticates through Twitch |
+
+The PSN token is **not** an env var: paste a fresh NPSSO token into the Settings page (it's validated immediately and stored in the database). It expires every couple of months; the sync summary tells you when it needs replacing.
+
+The SQLite database is created at `data/wishlist.db` on first run.
+
+`npm run check` typechecks the project — the only verification step; there are no tests.
+
+## Deploying
 
 ```sh
-npm run build
+./deploy.sh
 ```
 
-You can preview the production build with `npm run preview`.
+Requires a clean tree on `main`. Pushes to GitHub, then pulls and rebuilds on the VPS (`docker compose up -d --build`), and health-checks the deployed SHA against local. The container binds to localhost only; nginx terminates TLS in front. The `data/` directory is volume-mounted so the database survives rebuilds.
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+## Development notes
+
+Architecture details (data model, sync pipeline order and precedence rules, per-store API quirks) are documented in [CLAUDE.md](CLAUDE.md).
