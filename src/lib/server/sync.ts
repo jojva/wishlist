@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/private';
-import type { SyncSummary } from '$lib/types';
+import type { SyncProgress, SyncSummary } from '$lib/types';
 import db, { getMeta, setMeta } from './db';
 import { lookupPsnConcepts, lookupSteamApps } from './igdb';
 import { getPsnAccessToken, isPsnConfigured } from './psnAuth';
@@ -79,11 +79,35 @@ const stmts = {
 };
 
 let running: Promise<SyncSummary> | null = null;
+let progress: SyncProgress | null = null;
 
 /** Coalesces concurrent callers (button spam, cron overlap) into a single run. */
 export function runSteamSync(): Promise<SyncSummary> {
-	running ??= doSync().finally(() => (running = null));
+	running ??= doSync().finally(() => {
+		running = null;
+		progress = null;
+	});
 	return running;
+}
+
+export function getSyncProgress(): SyncProgress | null {
+	return progress;
+}
+
+/**
+ * Each pipeline phase owns a fixed [from, to] slice of the progress bar (the
+ * weights are rough guesses at relative duration). Entering a phase jumps to
+ * `from`; the returned tick interpolates towards `to` when the phase has a
+ * known item count. Skipped phases (e.g. PSN not configured) just jump ahead.
+ */
+function trackPhase(phase: string, from: number, to: number, total = 1): () => void {
+	progress = { percent: from, phase };
+	const safeTotal = Math.max(total, 1);
+	let done = 0;
+	return () => {
+		done = Math.min(done + 1, safeTotal);
+		progress = { percent: Math.round(from + (done / safeTotal) * (to - from)), phase };
+	};
 }
 
 export function getLastSync(): SyncSummary | null {
@@ -128,6 +152,7 @@ async function syncSteam(summary: SyncSummary): Promise<void> {
 	const steamId = env.STEAM_ID;
 	if (!steamId) throw new Error('STEAM_ID environment variable is not set');
 
+	trackPhase('Steam wishlist', 0, 15);
 	const wishlisted = new Set(await fetchWishlistAppids(steamId));
 	// Also refresh games that carry a Steam identity without being on the
 	// Steam wishlist (e.g. PSN-wishlisted games that exist on Steam).
@@ -170,6 +195,7 @@ const applySteamData = db.transaction(
 // --- IGDB enrichment (Steam identity -> PlayStation availability) ------------
 
 async function enrichPlayStationAvailability(): Promise<void> {
+	trackPhase('PlayStation availability', 15, 30);
 	const rows = stmts.selectSteamGames.all() as {
 		id: number;
 		steam_appid: number;
@@ -204,10 +230,12 @@ async function syncPsnWishlist(summary: SyncSummary): Promise<void> {
 		return;
 	}
 
+	trackPhase('PSN wishlist', 30, 32);
 	const token = await getPsnAccessToken();
 	const items = await fetchPsnWishlist(token);
 
 	// Released products need a product -> concept resolution (anonymous query).
+	const tick = trackPhase('PSN wishlist', 32, 45, items.length);
 	const resolved: { item: PsnWishlistItem; conceptId: string }[] = [];
 	await mapConcurrent(items, async (item) => {
 		const conceptId = item.isConcept
@@ -215,6 +243,7 @@ async function syncPsnWishlist(summary: SyncSummary): Promise<void> {
 			: await resolveProductToConcept(item.id).catch(() => null);
 		if (conceptId) resolved.push({ item, conceptId });
 		else summary.failed++;
+		tick();
 	});
 
 	// Concepts we don't know yet might still be games we already track via
@@ -279,6 +308,7 @@ const applyPsnData = db.transaction(
 // --- IGDB reverse enrichment (PSN concept -> PC availability + English title) --
 
 async function enrichPcAvailability(): Promise<void> {
+	trackPhase('PC availability', 45, 55);
 	const psnOnly = stmts.selectPsnOnlyGames.all() as { id: number; psn_concept_id: string }[];
 	if (psnOnly.length === 0) return;
 
@@ -340,16 +370,20 @@ async function refreshPs5Data(): Promise<void> {
 		id: number;
 		psn_concept_id: string;
 	}[];
+	const tickNames = trackPhase('PS Store names & dates', 55, 65, psnPrimary.length);
 	await mapConcurrent(psnPrimary, async (row) => {
 		const summary = await fetchConceptSummary(row.psn_concept_id).catch(() => null);
+		tickNames();
 		if (!summary) return;
 		if (summary.name) stmts.setTitle.run(summary.name, row.id);
 		if (summary.releaseDate) stmts.setPs5ReleaseDate.run(summary.releaseDate, row.id);
 	});
 
 	const ratable = stmts.selectRatableGames.all() as { id: number; psn_concept_id: string }[];
+	const tickRatings = trackPhase('PS Store ratings', 65, 100, ratable.length);
 	await mapConcurrent(ratable, async (row) => {
 		const score = await fetchConceptRating(row.psn_concept_id).catch(() => null);
+		tickRatings();
 		// Null can mean "no ratings yet" or a transient failure — keep the old value.
 		if (score) stmts.setPs5Score.run(score, row.id);
 	});

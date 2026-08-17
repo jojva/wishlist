@@ -19,6 +19,12 @@ export interface Game {
 	platforms: PlatformInfo[];
 }
 
+/** Live progress of an in-flight sync; null when no sync is running. */
+export interface SyncProgress {
+	percent: number;
+	phase: string;
+}
+
 export interface SyncSummary {
 	at: string;
 	added: number;

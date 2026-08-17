@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { flip } from 'svelte/animate';
 	import { dndzone, type DndEvent } from 'svelte-dnd-action';
-	import type { Game, SourceId } from '$lib/types';
+	import type { Game, SourceId, SyncProgress } from '$lib/types';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -58,10 +58,24 @@
 
 	let syncing = $state(false);
 	let syncError = $state<string | null>(null);
+	let syncProgress = $state<SyncProgress | null>(null);
+
+	async function pollProgress() {
+		try {
+			const res = await fetch('/api/sync');
+			const body = await res.json();
+			// Keep the last known value across the null gap between pipeline end and reload.
+			if (body.progress) syncProgress = body.progress;
+		} catch {
+			// Transient poll failures don't matter — the next tick retries.
+		}
+	}
 
 	async function sync() {
 		syncing = true;
 		syncError = null;
+		syncProgress = { percent: 0, phase: 'Starting' };
+		const poll = setInterval(pollProgress, 500);
 		try {
 			const res = await fetch('/api/sync', { method: 'POST' });
 			if (!res.ok) {
@@ -72,6 +86,8 @@
 		} catch (e) {
 			syncError = e instanceof Error ? e.message : 'Sync failed';
 			syncing = false;
+		} finally {
+			clearInterval(poll);
 		}
 	}
 
@@ -188,7 +204,7 @@
 			{:else if saveState === 'error'}
 				<span class="save-status error">Save failed — reorder again to retry</span>
 			{/if}
-			<button class="sync" onclick={sync} disabled={syncing}>
+			<button class="sync" onclick={sync} disabled={syncing} title={syncing ? syncProgress?.phase : undefined}>
 				<svg
 					class="glyph"
 					class:spinning={syncing}
@@ -204,7 +220,7 @@
 					<polyline points="1 20 1 14 7 14" />
 					<path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
 				</svg>
-				{syncing ? 'Syncing…' : 'Sync'}
+				{syncing ? `Syncing… ${syncProgress?.percent ?? 0}%` : 'Sync'}
 			</button>
 			<a class="settings-link" href="/settings" title="Settings" aria-label="Settings">
 				<svg
@@ -363,6 +379,7 @@
 		padding: 0.5rem 1rem;
 		font-size: 0.9rem;
 		font-weight: 600;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.sync:not(:disabled) {
