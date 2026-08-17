@@ -159,7 +159,16 @@
 
 <main>
 	<header>
-		<h1>🎮 Wishlist</h1>
+		<div class="masthead">
+			<h1>🎮 Wishlist</h1>
+			{#if data.lastSync}
+				<p class="sync-meta">
+					Last sync {formatAgo(data.lastSync.at)}{data.lastSync.error
+						? ` — failed: ${data.lastSync.error}`
+						: ''}
+				</p>
+			{/if}
+		</div>
 		<div class="header-right">
 			{#if saveState === 'saving'}
 				<span class="save-status">Saving…</span>
@@ -167,20 +176,15 @@
 				<span class="save-status error">Save failed — reorder again to retry</span>
 			{/if}
 			<button class="sync" onclick={sync} disabled={syncing}>
-				{syncing ? '⟳ Syncing…' : '⟳ Sync'}
+				<span class="glyph" class:spinning={syncing}>⟳</span>
+				{syncing ? 'Syncing…' : 'Sync'}
 			</button>
-			<a class="settings-link" href="/settings" title="Settings">⚙</a>
+			<a class="settings-link" href="/settings" title="Settings" aria-label="Settings">⚙</a>
 		</div>
 	</header>
 
 	{#if syncError}
 		<p class="sync-info error">Sync failed: {syncError}</p>
-	{:else if data.lastSync}
-		<p class="sync-info">
-			Last sync {formatAgo(data.lastSync.at)}{data.lastSync.error
-				? ` — failed: ${data.lastSync.error}`
-				: ''}
-		</p>
 	{/if}
 
 	{#if data.lastSync?.psnError}
@@ -263,18 +267,28 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 0.5rem 1rem;
 		margin-bottom: 1.25rem;
+		padding-bottom: 1rem;
+		border-bottom: 1px solid #2c3446;
 	}
 
 	h1 {
-		font-size: 1.5rem;
+		font-size: 1.6rem;
 		margin: 0;
+	}
+
+	.sync-meta {
+		margin: 0.25rem 0 0;
+		font-size: 0.8rem;
+		color: #8b93a3;
 	}
 
 	.header-right {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: 0.6rem;
 	}
 
 	.save-status {
@@ -287,32 +301,51 @@
 	}
 
 	.sync {
-		background: #1d2330;
-		color: #8b93a3;
-		border: 1px solid #2c3446;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		background: #2b5cb8;
+		color: #fff;
+		border: none;
 		border-radius: 8px;
-		padding: 0.4rem 0.9rem;
+		padding: 0.5rem 1rem;
 		font-size: 0.9rem;
+		font-weight: 600;
 	}
 
 	.sync:not(:disabled) {
 		cursor: pointer;
-		color: #e6e9ef;
 	}
 
 	.sync:not(:disabled):hover {
-		border-color: #4a5878;
+		background: #3a6fd0;
 	}
 
 	.sync:disabled {
 		cursor: wait;
-		opacity: 0.6;
+		background: #24406e;
+		color: #b9c4d8;
+	}
+
+	.glyph {
+		display: inline-block;
+		line-height: 1;
+	}
+
+	.spinning {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	.sync-info {
 		font-size: 0.8rem;
 		color: #8b93a3;
-		margin: -0.5rem 0 1rem;
+		margin: 0 0 1rem;
 	}
 
 	.sync-info.error {
@@ -328,13 +361,22 @@
 	}
 
 	.settings-link {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		background: #1d2330;
+		border: 1px solid #2c3446;
+		border-radius: 8px;
 		color: #8b93a3;
 		text-decoration: none;
-		font-size: 1.2rem;
+		font-size: 1.15rem;
 	}
 
 	.settings-link:hover {
 		color: #e6e9ef;
+		border-color: #4a5878;
 	}
 
 	.empty {
