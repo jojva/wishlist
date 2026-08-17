@@ -173,7 +173,7 @@
 <main>
 	<header>
 		<div class="masthead">
-			<h1>🎮 Wishlist</h1>
+			<h1><img class="logo" src="/favicon.svg" alt="" /> Wishlist</h1>
 			{#if data.lastSync}
 				<p class="sync-meta">
 					<span class="ago" title={formatFull(data.lastSync.at)}>
@@ -318,8 +318,17 @@
 	}
 
 	h1 {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
 		font-size: 1.6rem;
 		margin: 0;
+	}
+
+	.logo {
+		width: 1.9rem;
+		height: 1.9rem;
+		display: block;
 	}
 
 	.sync-meta {
